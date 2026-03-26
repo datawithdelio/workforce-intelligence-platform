@@ -1,0 +1,17 @@
+node_modules
+.turbo
+.next
+dist
+coverage
+.env
+.env.local
+*.log
+analytics/python/models/*.pkl
+analytics/python/.venv
+__pycache__/
+analytics/python/data/processed/*
+analytics/python/data/predictions/*
+!analytics/python/data/processed/.gitkeep
+!analytics/python/data/predictions/.gitkeep
+postgres_data
+*.tsbuildinfo

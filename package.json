@@ -1,0 +1,34 @@
+{
+  "name": "workforce-intelligence-platform",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@9.6.7",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "dotenv -e .env -- concurrently -n api,web -c magenta,cyan \"npm --prefix apps/api run dev\" \"npm --prefix apps/web run dev\"",
+    "dev:api": "dotenv -e .env -- npm --prefix apps/api run dev",
+    "dev:web": "dotenv -e .env -- npm --prefix apps/web run dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "db:generate": "npm run db:generate --workspace @workforce/db",
+    "db:migrate": "dotenv -e .env -- npm run db:migrate --workspace @workforce/db",
+    "db:seed": "dotenv -e .env -- tsx scripts/seed.ts",
+    "kpis:refresh": "dotenv -e .env -- tsx scripts/refresh-kpis.ts",
+    "notify:remind": "dotenv -e .env -- tsx scripts/remind.ts",
+    "summary:weekly": "dotenv -e .env -- tsx scripts/weekly-summary.ts"
+  },
+  "devDependencies": {
+    "bcryptjs": "^2.4.3",
+    "@types/node": "^20.12.7",
+    "concurrently": "^9.1.2",
+    "dotenv-cli": "^7.4.1",
+    "tsx": "^4.7.2",
+    "turbo": "^2.0.3",
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: workforce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: workforce_intelligence
+      POSTGRES_USER: workforce
+      POSTGRES_PASSWORD: workforce
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: workforce-api
+    depends_on:
+      - postgres
+    environment:
+      DATABASE_URL: postgresql://workforce:workforce@postgres:5432/workforce_intelligence
+      API_PORT: 4000
+      JWT_SECRET: development-jwt-secret
+      NEXTAUTH_SECRET: development-nextauth-secret
+      NEXTAUTH_URL: http://localhost:3000
+      WEB_APP_URL: http://localhost:3000
+    ports:
+      - "4000:4000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev --workspace @workforce/api"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: workforce-web
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000/api/v1
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: development-nextauth-secret
+      API_INTERNAL_URL: http://api:4000/api/v1
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev --workspace @workforce/web"
+
+volumes:
+  postgres_data:
