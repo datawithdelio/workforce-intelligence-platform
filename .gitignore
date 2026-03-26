@@ -15,3 +15,5 @@ analytics/python/data/predictions/*
 !analytics/python/data/predictions/.gitkeep
 postgres_data
 *.tsbuildinfo
+.vercel
+.railway

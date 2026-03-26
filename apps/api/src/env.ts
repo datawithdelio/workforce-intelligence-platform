@@ -10,7 +10,7 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse({
-  API_PORT: process.env.API_PORT ?? "4000",
+  API_PORT: process.env.PORT ?? process.env.API_PORT ?? "4000",
   DATABASE_URL:
     process.env.DATABASE_URL ?? "postgresql://workforce:workforce@localhost:5433/workforce_intelligence",
   JWT_SECRET: process.env.JWT_SECRET ?? "development-jwt-secret",
