@@ -2,7 +2,7 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "npm install && npm run build --workspace @workforce/api"
+    "buildCommand": "npm install && npm run build --workspace @workforce/shared && npm run build --workspace @workforce/db && npm run build --workspace @workforce/api"
   },
   "deploy": {
     "startCommand": "npm run start --workspace @workforce/api",
