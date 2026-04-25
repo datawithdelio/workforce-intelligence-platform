@@ -3,9 +3,10 @@ import { env } from "./env";
 
 async function bootstrap() {
   const app = await createApp();
+  const host = "0.0.0.0";
 
-  app.listen(env.API_PORT, () => {
-    console.log(`Workforce API listening on port ${env.API_PORT}`);
+  app.listen(env.API_PORT, host, () => {
+    console.log(`Workforce API listening on ${host}:${env.API_PORT}`);
   });
 }
 
