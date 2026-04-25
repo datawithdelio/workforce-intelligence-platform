@@ -1,8 +1,20 @@
 import { z } from "zod";
 
+const connectionStringSchema = z
+  .string()
+  .min(1)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return ["postgres:", "postgresql:", "http:", "https:"].includes(url.protocol);
+    } catch {
+      return false;
+    }
+  }, "Invalid connection string");
+
 const envSchema = z.object({
   API_PORT: z.coerce.number().int().positive().default(4000),
-  DATABASE_URL: z.string().url(),
+  DATABASE_URL: connectionStringSchema,
   JWT_SECRET: z.string().min(16),
   NEXTAUTH_SECRET: z.string().min(16),
   NEXTAUTH_URL: z.string().url(),
