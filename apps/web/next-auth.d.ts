@@ -7,6 +7,9 @@ declare module "next-auth" {
       id: number;
       email: string;
       role: "employee" | "manager" | "admin";
+      employeeId?: number | null;
+      firstName?: string | null;
+      lastName?: string | null;
       token: string;
     };
   }
@@ -15,6 +18,9 @@ declare module "next-auth" {
     id: number;
     email: string;
     role: "employee" | "manager" | "admin";
+    employeeId?: number | null;
+    firstName?: string | null;
+    lastName?: string | null;
     token: string;
   }
 }
@@ -24,6 +30,9 @@ declare module "next-auth/jwt" {
     id?: number;
     email?: string;
     role?: "employee" | "manager" | "admin";
+    employeeId?: number | null;
+    firstName?: string | null;
+    lastName?: string | null;
     token?: string;
   }
 }

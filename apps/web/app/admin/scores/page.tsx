@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 
 import { Card, CardDescription, CardTitle } from "@workforce/ui";
 
@@ -9,6 +10,11 @@ import { getScoreSummary } from "../../../lib/api";
 
 export default async function AdminScoresPage() {
   const session = await getServerSession(authOptions);
+
+  if (session?.user?.role !== "admin") {
+    redirect("/dashboard");
+  }
+
   const summary = (await getScoreSummary(session?.user?.token)) as {
     total: number;
     distribution: Record<string, number>;

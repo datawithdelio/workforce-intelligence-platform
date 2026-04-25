@@ -1,9 +1,9 @@
 "use client";
 
-import type { PropsWithChildren } from "react";
+import { useEffect, useState, type PropsWithChildren } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 import { cn } from "@workforce/ui";
 import { AppIcon, type IconName } from "./app-icon";
@@ -14,30 +14,51 @@ type NavItem = {
   icon: IconName;
 };
 
-const navGroups: Array<{ label: string; items: NavItem[] }> = [
-  {
-    label: "Platform",
-    items: [
-      { href: "/dashboard", label: "Overview", icon: "dashboard" },
-      { href: "/employees", label: "People", icon: "employees" },
-      { href: "/approvals", label: "Review queue", icon: "approvals" },
-      { href: "/notifications", label: "Inbox", icon: "notifications" }
-    ]
-  },
-  {
-    label: "Intelligence",
-    items: [
-      { href: "/admin/users", label: "Access", icon: "users" },
-      { href: "/admin/scores", label: "AI signals", icon: "scores" }
-    ]
+function getNavGroups(role: string | undefined, employeeId: number | null | undefined): Array<{ label: string; items: NavItem[] }> {
+  if (role === "employee") {
+    return [
+      {
+        label: "Workspace",
+        items: [
+          { href: "/dashboard", label: "Overview", icon: "dashboard" },
+          ...(employeeId ? [{ href: `/employees/${employeeId}`, label: "My profile", icon: "employees" as const }] : []),
+          { href: "/notifications", label: "Inbox", icon: "notifications" }
+        ]
+      }
+    ];
   }
-];
+
+  return [
+    {
+      label: "Platform",
+      items: [
+        { href: "/dashboard", label: "Overview", icon: "dashboard" },
+        { href: "/employees", label: "People", icon: "employees" },
+        { href: "/approvals", label: "Review queue", icon: "approvals" },
+        { href: "/notifications", label: "Inbox", icon: "notifications" }
+      ]
+    },
+    {
+      label: "Intelligence",
+      items: [
+        { href: "/admin/users", label: "Access", icon: "users" },
+        { href: "/admin/scores", label: "AI signals", icon: "scores" }
+      ]
+    }
+  ];
+}
 
 function isLinkActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-function formatDisplayName(email: string | undefined) {
+function formatDisplayName(email: string | undefined, firstName?: string | null, lastName?: string | null) {
+  const explicitName = [firstName, lastName].filter(Boolean).join(" ").trim();
+
+  if (explicitName) {
+    return explicitName;
+  }
+
   if (!email) {
     return "Team member";
   }
@@ -65,7 +86,9 @@ export function AppShell({
 }: PropsWithChildren<{ title: string; description: string }>) {
   const pathname = usePathname();
   const { data: session } = useSession();
-  const displayName = formatDisplayName(session?.user?.email);
+  const [pendingApprovals, setPendingApprovals] = useState<number>(0);
+  const [unreadNotifications, setUnreadNotifications] = useState<number>(0);
+  const displayName = formatDisplayName(session?.user?.email, session?.user?.firstName, session?.user?.lastName);
   const initials = displayName
     .split(" ")
     .filter(Boolean)
@@ -74,11 +97,79 @@ export function AppShell({
     .join("")
     .toUpperCase();
   const roleLabel = formatWorkspaceLabel(session?.user?.role);
+  const navGroups = getNavGroups(session?.user?.role, session?.user?.employeeId);
   const todayLabel = new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
     year: "numeric"
   }).format(new Date());
+  const roleName = session?.user?.role ? `${session.user.role.charAt(0).toUpperCase()}${session.user.role.slice(1)}` : "Member";
+
+  useEffect(() => {
+    async function loadPendingApprovals() {
+      if (!session?.user?.token || !session.user.role || session.user.role === "employee") {
+        setPendingApprovals(0);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1"}/dashboard/kpis`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.user.token}`
+            },
+            cache: "no-store"
+          }
+        );
+
+        if (!response.ok) {
+          setPendingApprovals(0);
+          return;
+        }
+
+        const payload = (await response.json()) as { pendingApprovals?: number };
+        setPendingApprovals(payload.pendingApprovals ?? 0);
+      } catch (_error) {
+        setPendingApprovals(0);
+      }
+    }
+
+    void loadPendingApprovals();
+  }, [pathname, session?.user?.role, session?.user?.token]);
+
+  useEffect(() => {
+    async function loadUnreadNotifications() {
+      if (!session?.user?.token) {
+        setUnreadNotifications(0);
+        return;
+      }
+
+      try {
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1"}/notifications`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.user.token}`
+            },
+            cache: "no-store"
+          }
+        );
+
+        if (!response.ok) {
+          setUnreadNotifications(0);
+          return;
+        }
+
+        const payload = (await response.json()) as Array<{ isRead?: boolean }>;
+        setUnreadNotifications(payload.filter((notification) => !notification.isRead).length);
+      } catch (_error) {
+        setUnreadNotifications(0);
+      }
+    }
+
+    void loadUnreadNotifications();
+  }, [pathname, session?.user?.token]);
 
   return (
     <div className="min-h-screen bg-[#edf1ea] text-slate-950">
@@ -123,6 +214,28 @@ export function AppShell({
                             <AppIcon name={item.icon} className="h-5 w-5" />
                           </span>
                           <span>{item.label}</span>
+                          {item.href === "/approvals" && pendingApprovals > 0 ? (
+                            <span
+                              className={cn(
+                                "ml-auto inline-flex min-w-7 items-center justify-center rounded-full px-2 py-1 text-xs font-bold leading-none",
+                                active ? "bg-white text-[#166534]" : "bg-[#c73643] text-white"
+                              )}
+                              aria-label={`${pendingApprovals} pending approval${pendingApprovals === 1 ? "" : "s"}`}
+                            >
+                              {pendingApprovals}
+                            </span>
+                          ) : null}
+                          {item.href === "/notifications" && unreadNotifications > 0 ? (
+                            <span
+                              className={cn(
+                                "ml-auto inline-flex min-w-7 items-center justify-center rounded-full px-2 py-1 text-xs font-bold leading-none",
+                                active ? "bg-white text-[#166534]" : "bg-[#c73643] text-white"
+                              )}
+                              aria-label={`${unreadNotifications} unread notification${unreadNotifications === 1 ? "" : "s"}`}
+                            >
+                              {unreadNotifications}
+                            </span>
+                          ) : null}
                         </Link>
                       );
                     })}
@@ -180,10 +293,18 @@ export function AppShell({
                     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f8d9d8] text-sm font-black text-slate-950">
                       {initials || "WI"}
                     </div>
-                    <div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{roleName} account</p>
                       <p className="text-sm font-semibold text-slate-950">{displayName}</p>
                       <p className="text-xs text-slate-500">{session?.user?.email ?? "workspace@example.com"}</p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => signOut({ callbackUrl: "/login" })}
+                      className="ml-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-950 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+                    >
+                      Log out
+                    </button>
                   </div>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 
 import { Card, CardDescription, CardTitle } from "@workforce/ui";
 
@@ -12,20 +13,38 @@ import { formatDateTime } from "../../../lib/formatting";
 
 type ChangeRequestDetail = {
   id: number;
-  fieldName: string;
-  oldValue: string;
-  newValue: string;
-  status: string;
-  requestedAt: string;
+  fieldName?: string | null;
+  oldValue?: string | null;
+  newValue?: string | null;
+  status?: string | null;
+  requestedAt?: string | null;
   notes?: string | null;
-  firstName: string;
-  lastName: string;
-  department: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  department?: string | null;
 };
 
 export default async function ApprovalDetailPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
+
+  if (!session?.user?.role || session.user.role === "employee") {
+    redirect("/dashboard");
+  }
+
   const request = (await getChangeRequest(params.id, session?.user?.token)) as ChangeRequestDetail;
+
+  if (!request?.id) {
+    redirect("/approvals");
+  }
+
+  const requestStatus = request.status ?? "pending";
+  const reviewerStatusLabel = requestStatus === "pending" ? "Waiting for manager review" : requestStatus;
+  const departmentLabel = request.department ?? "Unknown department";
+  const employeeName = [request.firstName, request.lastName].filter(Boolean).join(" ") || "Employee";
+  const requestFieldName = request.fieldName ?? "profile field";
+  const requestedAtLabel = request.requestedAt ? formatDateTime(request.requestedAt) : "Unknown time";
+  const currentValue = request.oldValue?.trim() ? request.oldValue : "No current value on record.";
+  const requestedValue = request.newValue?.trim() ? request.newValue : "No requested value provided.";
 
   return (
     <AppShell
@@ -38,16 +57,14 @@ export default async function ApprovalDetailPage({ params }: { params: { id: str
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge label={request.status === "pending" ? "Waiting for manager review" : request.status} />
+                  <StatusBadge label={reviewerStatusLabel} />
                   <span className="rounded-full bg-[#edf7ee] px-3 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#166534]">
-                    {request.department}
+                    {departmentLabel}
                   </span>
                 </div>
-                <CardTitle className="mt-4 text-3xl font-black tracking-[-0.05em]">
-                  {request.firstName} {request.lastName}
-                </CardTitle>
+                <CardTitle className="mt-4 text-3xl font-black tracking-[-0.05em]">{employeeName}</CardTitle>
                 <CardDescription className="mt-2 text-base">
-                  Requested {formatDateTime(request.requestedAt)} • Field changed: {request.fieldName}
+                  Requested {requestedAtLabel} • Field changed: {requestFieldName}
                 </CardDescription>
               </div>
               <div className="rounded-[1.5rem] border border-slate-200 bg-[#f8faf7] px-4 py-4">
@@ -62,7 +79,7 @@ export default async function ApprovalDetailPage({ params }: { params: { id: str
                   <AppIcon name="clock" className="h-4 w-4 text-slate-400" />
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current value</p>
                 </div>
-                <p className="mt-4 text-base leading-7 text-slate-700">{request.oldValue}</p>
+                <p className="mt-4 text-base leading-7 text-slate-700">{currentValue}</p>
               </div>
 
               <div className="rounded-[1.75rem] border border-[#d5e8da] bg-[#f7fbf7] p-5">
@@ -70,12 +87,12 @@ export default async function ApprovalDetailPage({ params }: { params: { id: str
                   <AppIcon name="arrow" className="h-4 w-4 text-[#166534]" />
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#166534]">Requested value</p>
                 </div>
-                <p className="mt-4 text-base leading-7 text-slate-700">{request.newValue}</p>
+                <p className="mt-4 text-base leading-7 text-slate-700">{requestedValue}</p>
               </div>
             </div>
           </Card>
 
-          <ApprovalReviewForm requestId={request.id} token={session?.user?.token} status={request.status} />
+          <ApprovalReviewForm requestId={request.id} token={session?.user?.token} status={requestStatus} />
         </div>
 
         <div className="space-y-4">

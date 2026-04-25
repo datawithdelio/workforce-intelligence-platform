@@ -1,6 +1,6 @@
 import { Router } from "express";
 
-import { loginRequestSchema } from "@workforce/shared";
+import { loginRequestSchema, registerRequestSchema } from "@workforce/shared";
 
 import { parseOrThrow } from "../lib/validation";
 import { requireAuth } from "../middleware/auth";
@@ -15,6 +15,16 @@ export function buildAuthRouter(services: AppServices): Router {
       const input = parseOrThrow(loginRequestSchema, req.body);
       const response = await services.auth.login(input);
       res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/register", async (req, res, next) => {
+    try {
+      const input = parseOrThrow(registerRequestSchema, req.body);
+      const response = await services.auth.register(input);
+      res.status(201).json(response);
     } catch (error) {
       next(error);
     }

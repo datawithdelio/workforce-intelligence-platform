@@ -19,6 +19,9 @@ export interface AuthUser {
   id: number;
   email: string;
   role: UserRole;
+  employeeId?: number | null;
+  firstName?: string | null;
+  lastName?: string | null;
 }
 
 export interface AuthSessionUser extends AuthUser {

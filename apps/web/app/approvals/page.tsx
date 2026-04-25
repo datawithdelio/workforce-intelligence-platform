@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Card, CardDescription, CardTitle } from "@workforce/ui";
 
@@ -25,6 +26,11 @@ type ChangeRequestRow = {
 
 export default async function ApprovalsPage() {
   const session = await getServerSession(authOptions);
+
+  if (!session?.user?.role || session.user.role === "employee") {
+    redirect("/dashboard");
+  }
+
   const requests = (await getChangeRequests(session?.user?.token)) as ChangeRequestRow[];
   const uniqueDepartments = new Set(requests.map((request) => request.department)).size;
   const fieldsChanged = new Set(requests.map((request) => request.fieldName)).size;

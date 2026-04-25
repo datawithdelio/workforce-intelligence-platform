@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "build": "turbo build",
-    "dev": "dotenv -e .env -- concurrently -n api,web -c magenta,cyan \"npm --prefix apps/api run dev\" \"npm --prefix apps/web run dev\"",
+    "dev": "dotenv -e .env -- concurrently -n api,web -c magenta,cyan \"npm --prefix apps/api run dev\" \"PORT=3000 npm --prefix apps/web run dev\"",
     "dev:api": "dotenv -e .env -- npm --prefix apps/api run dev",
     "dev:web": "dotenv -e .env -- npm --prefix apps/web run dev",
     "lint": "turbo lint",

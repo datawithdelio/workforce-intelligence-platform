@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import Image from "next/image";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { Button, Card, CardDescription, CardTitle, cn } from "@workforce/ui";
 
@@ -23,7 +24,7 @@ type EmployeeProfile = {
   phone?: string;
   address?: string;
   bio: string;
-  avatarUrl: string;
+  avatarUrl?: string | null;
   completionScore: number;
   isActive: boolean;
   updatedAt: string;
@@ -38,13 +39,20 @@ type EngagementScore = {
 
 export default async function EmployeeProfilePage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  const employee = (await getEmployee(params.id, session?.user?.token)) as EmployeeProfile;
-  const score = (await getScoreForEmployee(params.id, session?.user?.token)) as EngagementScore;
-  const scorePercent = Math.round(Number(score.score ?? 0) * 100);
+  const employee = (await getEmployee(params.id, session?.user?.token)) as EmployeeProfile | null;
+  if (!employee) {
+    notFound();
+  }
+  const canRequestUpdate = session?.user?.role === "employee" && session.user.employeeId === employee.id;
+  const canViewScore = session?.user?.role === "admin" || session?.user?.role === "manager";
+  const score = canViewScore ? ((await getScoreForEmployee(params.id, session?.user?.token)) as EngagementScore | null) : null;
+  const scorePercent = Math.round(Number(score?.score ?? 0) * 100);
   const privateFields = [
     { label: "Phone", value: employee.phone },
     { label: "Address", value: employee.address }
   ].filter((item) => item.value);
+  const avatarUrl = employee.avatarUrl?.trim();
+  const initials = `${employee.firstName.charAt(0)}${employee.lastName.charAt(0)}`.toUpperCase();
 
   return (
     <AppShell
@@ -54,18 +62,27 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
       <section className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
         <Card className="rounded-[2rem] border border-black/5 p-6 shadow-[0_35px_90px_-65px_rgba(15,23,42,0.55)]">
           <div className="relative h-72 overflow-hidden rounded-[1.75rem] bg-[#f5f7f2]">
-            <Image
-              alt={`${employee.firstName} ${employee.lastName} profile picture`}
-              fill
-              src={employee.avatarUrl}
-              style={{ objectFit: "cover" }}
-            />
+            {avatarUrl ? (
+              <Image
+                alt={`${employee.firstName} ${employee.lastName} profile picture`}
+                fill
+                src={avatarUrl}
+                unoptimized
+                style={{ objectFit: "cover" }}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(82,192,112,0.18),transparent_35%),linear-gradient(160deg,#eef6ef,#dfece2_55%,#f7faf6)]">
+                <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white text-3xl font-black tracking-[-0.06em] text-[#166534] shadow-[0_24px_60px_-40px_rgba(22,101,52,0.45)]">
+                  {initials}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-2">
             <StatusBadge label={employee.role} />
             <StatusBadge label={employee.isActive ? "Active employee" : "Not active"} />
-            <StatusBadge label={score.riskLevel} />
+            {score ? <StatusBadge label={score.riskLevel} /> : null}
           </div>
 
           <div className="mt-5">
@@ -100,10 +117,12 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
               <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Hire date</dt>
               <dd className="mt-2 text-lg font-semibold text-slate-950">{employee.hireDate}</dd>
             </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
-              <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Latest signal</dt>
-              <dd className="mt-2 text-lg font-semibold text-slate-950">{scorePercent}% likelihood profile stays complete</dd>
-            </div>
+            {score ? (
+              <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
+                <dt className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Latest signal</dt>
+                <dd className="mt-2 text-lg font-semibold text-slate-950">{scorePercent}% likelihood profile stays complete</dd>
+              </div>
+            ) : null}
           </dl>
         </Card>
 
@@ -117,9 +136,11 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
                 </CardDescription>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link href={`/employees/${params.id}/edit`}>
-                  <Button className="rounded-full bg-[#166534] px-6 hover:bg-[#14532d]">Request an update</Button>
-                </Link>
+                {canRequestUpdate ? (
+                  <Link href={`/employees/${params.id}/edit`}>
+                    <Button className="rounded-full bg-[#166534] px-6 hover:bg-[#14532d]">Request an update</Button>
+                  </Link>
+                ) : null}
                 <Link href={`/employees/${params.id}/history`}>
                   <Button variant="secondary" className="rounded-full border border-slate-200 bg-white px-6">
                     View history
@@ -163,7 +184,7 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
             </div>
           </Card>
 
-          <section className="grid gap-4 lg:grid-cols-2">
+          <section className={cn("grid gap-4", score ? "lg:grid-cols-2" : "lg:grid-cols-1")}>
             <Card className="rounded-[2rem] border border-black/5 p-6 shadow-[0_35px_90px_-65px_rgba(15,23,42,0.55)]">
               <CardTitle className="text-2xl font-black tracking-[-0.05em]">Private details</CardTitle>
               <CardDescription className="mt-2 text-base">
@@ -187,45 +208,47 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
               </div>
             </Card>
 
-            <Card className="rounded-[2rem] border border-black/5 p-6 shadow-[0_35px_90px_-65px_rgba(15,23,42,0.55)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <CardTitle className="text-2xl font-black tracking-[-0.05em]">AI completion signal</CardTitle>
-                  <CardDescription className="mt-2 text-base">
-                    This is a lightweight decision-support score based on profile upkeep and recent activity, not protected traits.
-                  </CardDescription>
+            {score ? (
+              <Card className="rounded-[2rem] border border-black/5 p-6 shadow-[0_35px_90px_-65px_rgba(15,23,42,0.55)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle className="text-2xl font-black tracking-[-0.05em]">AI completion signal</CardTitle>
+                    <CardDescription className="mt-2 text-base">
+                      This is a lightweight decision-support score based on profile upkeep and recent activity, not protected traits.
+                    </CardDescription>
+                  </div>
+                  <StatusBadge label={score.riskLevel} />
                 </div>
-                <StatusBadge label={score.riskLevel} />
-              </div>
 
-              <div className="mt-6 grid gap-4">
-                <div className="rounded-[1.75rem] bg-[#f7faf6] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Signal confidence</p>
-                  <p className="mt-3 text-5xl font-black tracking-[-0.08em] text-slate-950">{scorePercent}%</p>
-                  <div className="mt-4 h-3 rounded-full bg-slate-200">
-                    <div
-                      className={cn(
-                        "h-3 rounded-full",
-                        score.riskLevel === "high"
-                          ? "bg-[#ef4444]"
-                          : score.riskLevel === "medium"
-                            ? "bg-[#f59e0b]"
-                            : "bg-[#166534]"
-                      )}
-                      style={{ width: `${Math.max(scorePercent, 8)}%` }}
-                    />
+                <div className="mt-6 grid gap-4">
+                  <div className="rounded-[1.75rem] bg-[#f7faf6] p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Signal confidence</p>
+                    <p className="mt-3 text-5xl font-black tracking-[-0.08em] text-slate-950">{scorePercent}%</p>
+                    <div className="mt-4 h-3 rounded-full bg-slate-200">
+                      <div
+                        className={cn(
+                          "h-3 rounded-full",
+                          score.riskLevel === "high"
+                            ? "bg-[#ef4444]"
+                            : score.riskLevel === "medium"
+                              ? "bg-[#f59e0b]"
+                              : "bg-[#166534]"
+                        )}
+                        style={{ width: `${Math.max(scorePercent, 8)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Plain-English explanation</p>
+                    <p className="mt-3 text-base leading-7 text-slate-700">{score.explanation}</p>
+                    <p className="mt-3 text-sm text-slate-500">
+                      {score.scoredAt ? `Scored ${formatShortDate(score.scoredAt)}` : "Scored during the latest pipeline run"}
+                    </p>
                   </div>
                 </div>
-
-                <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Plain-English explanation</p>
-                  <p className="mt-3 text-base leading-7 text-slate-700">{score.explanation}</p>
-                  <p className="mt-3 text-sm text-slate-500">
-                    {score.scoredAt ? `Scored ${formatShortDate(score.scoredAt)}` : "Scored during the latest pipeline run"}
-                  </p>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            ) : null}
           </section>
         </div>
       </section>

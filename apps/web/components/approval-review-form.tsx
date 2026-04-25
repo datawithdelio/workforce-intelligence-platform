@@ -44,6 +44,7 @@ export function ApprovalReviewForm({
 
       if (response.ok) {
         setMessage(action === "approve" ? "Change request approved." : "Change request rejected.");
+        router.push("/approvals");
         router.refresh();
         return;
       }

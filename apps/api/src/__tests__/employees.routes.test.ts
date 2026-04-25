@@ -7,14 +7,17 @@ import { bearerTokenFor } from "./helpers";
 const services: AppServices = {
   auth: {
     login: vi.fn(),
+    register: vi.fn(),
     logout: vi.fn(),
     me: vi.fn()
   },
   employees: {
     list: vi.fn().mockResolvedValue({ items: [], page: 1, pageSize: 10 }),
+    create: vi.fn().mockResolvedValue({ message: "created", employee: { id: 2 } }),
     getById: vi.fn().mockResolvedValue({ id: 1, firstName: "Alex" }),
     update: vi.fn().mockResolvedValue({ message: "submitted" }),
-    history: vi.fn().mockResolvedValue([])
+    history: vi.fn().mockResolvedValue([]),
+    delete: vi.fn().mockResolvedValue({ message: "deleted", id: 1 })
   },
   changeRequests: {
     list: vi.fn(),
@@ -59,5 +62,33 @@ describe("employee routes", () => {
 
     expect(response.status).toBe(200);
     expect(services.employees.update).toHaveBeenCalled();
+  });
+
+  it("lets admins create and delete employees", async () => {
+    const app = await createApp(services);
+    const adminToken = bearerTokenFor({ id: 1, email: "admin@example.com", role: "admin" });
+
+    const createResponse = await request(app)
+      .post("/api/v1/employees")
+      .set("Authorization", adminToken)
+      .send({
+        firstName: "Taylor",
+        lastName: "Ops",
+        email: "taylor.ops@example.com",
+        password: "password123",
+        role: "employee",
+        jobTitle: "Operations Analyst",
+        department: "Operations",
+        hireDate: "2026-04-24"
+      });
+
+    const deleteResponse = await request(app)
+      .delete("/api/v1/employees/1")
+      .set("Authorization", adminToken);
+
+    expect(createResponse.status).toBe(201);
+    expect(deleteResponse.status).toBe(200);
+    expect(services.employees.create).toHaveBeenCalled();
+    expect(services.employees.delete).toHaveBeenCalled();
   });
 });

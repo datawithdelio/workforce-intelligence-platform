@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Client } from "pg";
 import { z } from "zod";
@@ -14,9 +15,8 @@ const env = envSchema.parse({
 });
 
 async function main() {
-  const migrationsDir = path.resolve(
-    "/Users/deliorincon/Desktop/pipeline/workforce-intelligence-platform/packages/db/migrations"
-  );
+  const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+  const migrationsDir = path.resolve(scriptDir, "../packages/db/migrations");
   const files = (await fs.readdir(migrationsDir))
     .filter((file) => file.endsWith(".sql"))
     .sort((left, right) => left.localeCompare(right));

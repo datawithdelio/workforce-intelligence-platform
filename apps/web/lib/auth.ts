@@ -6,6 +6,16 @@ import { loginRequestSchema } from "@workforce/shared";
 const apiBaseUrl =
   process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
+function getApiBaseCandidates() {
+  const candidates = [apiBaseUrl];
+
+  if (apiBaseUrl.includes("localhost")) {
+    candidates.push(apiBaseUrl.replace("localhost", "127.0.0.1"));
+  }
+
+  return [...new Set(candidates)];
+}
+
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt"
@@ -27,18 +37,19 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        try {
-          const response = await fetch(`${apiBaseUrl}/auth/login`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(parsedCredentials.data)
-          });
+        for (const baseUrl of getApiBaseCandidates()) {
+          try {
+            const response = await fetch(`${baseUrl}/auth/login`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(parsedCredentials.data)
+            });
 
-          if (!response.ok) {
-            return null;
-          }
+            if (!response.ok) {
+              continue;
+            }
 
           const payload = (await response.json()) as {
             token: string;
@@ -46,16 +57,22 @@ export const authOptions: NextAuthOptions = {
               id: number;
               email: string;
               role: "employee" | "manager" | "admin";
+              employeeId?: number | null;
+              firstName?: string | null;
+              lastName?: string | null;
             };
           };
 
-          return {
-            ...payload.user,
-            token: payload.token
-          };
-        } catch (_error) {
-          return null;
+            return {
+              ...payload.user,
+              token: payload.token
+            };
+          } catch (_error) {
+            continue;
+          }
         }
+
+        return null;
       }
     })
   ],
@@ -65,6 +82,9 @@ export const authOptions: NextAuthOptions = {
         token.id = Number(user.id);
         token.email = user.email;
         token.role = user.role;
+        token.employeeId = user.employeeId;
+        token.firstName = user.firstName;
+        token.lastName = user.lastName;
         token.token = user.token;
       }
 
@@ -75,6 +95,9 @@ export const authOptions: NextAuthOptions = {
         id: token.id ?? 0,
         email: token.email ?? "",
         role: token.role ?? "employee",
+        employeeId: token.employeeId ?? null,
+        firstName: token.firstName ?? null,
+        lastName: token.lastName ?? null,
         token: token.token ?? ""
       };
 

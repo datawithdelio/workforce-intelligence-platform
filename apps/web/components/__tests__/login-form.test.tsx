@@ -1,6 +1,7 @@
 import React from "react";
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { LoginForm } from "../login-form";
 
@@ -36,6 +37,20 @@ describe("LoginForm", () => {
 
     expect(screen.getByLabelText("Work email")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Sign in" })).toHaveLength(2);
+  });
+
+  it("shows account creation fields when register mode is selected", async () => {
+    const user = userEvent.setup();
+    render(<LoginForm />);
+
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(screen.getByLabelText("First name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Last name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Job title")).toBeInTheDocument();
+    expect(screen.getByLabelText("Department")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account and open dashboard" })).toBeInTheDocument();
   });
 });

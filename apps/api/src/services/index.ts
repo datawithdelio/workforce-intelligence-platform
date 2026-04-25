@@ -39,6 +39,22 @@ export interface AppServices {
       token: string;
       user: AuthUser;
     }>;
+    register(input: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+      jobTitle: string;
+      department: string;
+      hireDate: string;
+      phone?: string;
+      address?: string;
+      bio?: string;
+      avatarUrl?: string;
+    }): Promise<{
+      token: string;
+      user: AuthUser;
+    }>;
     logout(user: AuthUser): Promise<{ message: string }>;
     me(user: AuthUser): Promise<{ user: AuthUser }>;
   };
@@ -48,9 +64,28 @@ export interface AppServices {
       page: number;
       pageSize: number;
     }>;
+    create(input: {
+      authUser: AuthUser;
+      input: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        password: string;
+        role: "employee" | "manager";
+        jobTitle: string;
+        department: string;
+        hireDate: string;
+        phone?: string;
+        address?: string;
+        bio?: string;
+        avatarUrl?: string;
+        isActive?: boolean;
+      };
+    }): Promise<unknown>;
     getById(input: { authUser: AuthUser; employeeId: number }): Promise<unknown>;
     update(input: { authUser: AuthUser; employeeId: number; updates: Record<string, unknown> }): Promise<unknown>;
     history(input: { authUser: AuthUser; employeeId: number }): Promise<unknown[]>;
+    delete(input: { authUser: AuthUser; employeeId: number }): Promise<unknown>;
   };
   changeRequests: {
     list(input: { authUser: AuthUser }): Promise<unknown[]>;
@@ -252,9 +287,13 @@ async function buildDefaultServices(): Promise<AppServices> {
             id: users.id,
             email: users.email,
             role: users.role,
-            passwordHash: users.passwordHash
+            passwordHash: users.passwordHash,
+            employeeId: employeeProfiles.id,
+            firstName: employeeProfiles.firstName,
+            lastName: employeeProfiles.lastName
           })
           .from(users)
+          .leftJoin(employeeProfiles, eq(employeeProfiles.userId, users.id))
           .where(eq(users.email, input.email))
           .limit(1);
 
@@ -273,7 +312,10 @@ async function buildDefaultServices(): Promise<AppServices> {
         const authUser: AuthUser = {
           id: user.id,
           email: user.email,
-          role: user.role
+          role: user.role,
+          employeeId: user.employeeId,
+          firstName: user.firstName ?? null,
+          lastName: user.lastName ?? null
         };
 
         await createAuditLog({
@@ -282,6 +324,97 @@ async function buildDefaultServices(): Promise<AppServices> {
           entityType: "user",
           entityId: user.id,
           payload: { email: user.email }
+        });
+
+        return {
+          token: signAccessToken(authUser),
+          user: authUser
+        };
+      },
+      async register(input) {
+        const existingUser = await db.select({ id: users.id }).from(users).where(eq(users.email, input.email)).limit(1);
+
+        if (existingUser[0]) {
+          throw new AppError("An account with that email already exists.", 409);
+        }
+
+        const passwordHash = await bcrypt.hash(input.password, 10);
+        const completionScore = calculateCompletionScore({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          jobTitle: input.jobTitle,
+          department: input.department,
+          hireDate: input.hireDate,
+          phone: input.phone,
+          address: input.address,
+          bio: input.bio,
+          avatarUrl: input.avatarUrl
+        });
+
+        const authUser = await db.transaction(async (tx) => {
+          const insertedUsers = await tx
+            .insert(users)
+            .values({
+              email: input.email,
+              passwordHash,
+              role: "employee"
+            })
+            .returning({
+              id: users.id,
+              email: users.email,
+              role: users.role
+            });
+
+          const createdUser = insertedUsers[0];
+
+          if (!createdUser) {
+            throw new AppError("Account creation failed.", 500);
+          }
+
+          const existingDepartment = await tx
+            .select({ id: departments.id })
+            .from(departments)
+            .where(eq(departments.name, input.department))
+            .limit(1);
+
+          if (!existingDepartment[0]) {
+            await tx.insert(departments).values({ name: input.department });
+          }
+
+          const createdProfiles = await tx.insert(employeeProfiles).values({
+            userId: createdUser.id,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            jobTitle: input.jobTitle,
+            department: input.department,
+            hireDate: input.hireDate,
+            phone: input.phone ?? null,
+            address: input.address ?? null,
+            bio: input.bio ?? null,
+            avatarUrl: input.avatarUrl ?? null,
+            completionScore
+          }).returning({ id: employeeProfiles.id });
+
+          await tx.insert(auditLogs).values({
+            actorId: createdUser.id,
+            action: "auth.register",
+            entityType: "user",
+            entityId: createdUser.id,
+            payload: {
+              email: createdUser.email,
+              role: createdUser.role,
+              department: input.department
+            }
+          });
+
+          return {
+            id: createdUser.id,
+            email: createdUser.email,
+            role: createdUser.role,
+            employeeId: createdProfiles[0]?.id ?? null,
+            firstName: input.firstName,
+            lastName: input.lastName
+          } satisfies AuthUser;
         });
 
         return {
@@ -384,6 +517,128 @@ async function buildDefaultServices(): Promise<AppServices> {
 
         return mapProfileForViewer(row, authUser);
       },
+      async create({ authUser, input }) {
+        if (authUser.role !== "admin") {
+          throw new AppError("Admin access is required.", 403);
+        }
+
+        const existingUser = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, input.email))
+          .limit(1);
+
+        if (existingUser[0]) {
+          throw new AppError("An employee with that email already exists.", 409);
+        }
+
+        const passwordHash = await bcrypt.hash(input.password, 10);
+        const completionScore = calculateCompletionScore({
+          firstName: input.firstName,
+          lastName: input.lastName,
+          jobTitle: input.jobTitle,
+          department: input.department,
+          hireDate: input.hireDate,
+          phone: input.phone,
+          address: input.address,
+          bio: input.bio,
+          avatarUrl: input.avatarUrl
+        });
+
+        const createdEmployee = await db.transaction(async (tx) => {
+          const departmentRow = await tx
+            .select({ id: departments.id })
+            .from(departments)
+            .where(eq(departments.name, input.department))
+            .limit(1);
+
+          if (!departmentRow[0]) {
+            await tx.insert(departments).values({ name: input.department });
+          }
+
+          const createdUsers = await tx
+            .insert(users)
+            .values({
+              email: input.email,
+              passwordHash,
+              role: input.role
+            })
+            .returning({
+              id: users.id,
+              email: users.email,
+              role: users.role
+            });
+
+          const createdUser = createdUsers[0];
+
+          if (!createdUser) {
+            throw new AppError("Employee account creation failed.", 500);
+          }
+
+          const createdProfiles = await tx
+            .insert(employeeProfiles)
+            .values({
+              userId: createdUser.id,
+              firstName: input.firstName,
+              lastName: input.lastName,
+              jobTitle: input.jobTitle,
+              department: input.department,
+              hireDate: input.hireDate,
+              phone: input.phone ?? null,
+              address: input.address ?? null,
+              bio: input.bio ?? null,
+              avatarUrl: input.avatarUrl ?? null,
+              completionScore,
+              isActive: input.isActive ?? true
+            })
+            .returning({
+              employeeId: employeeProfiles.id,
+              updatedAt: employeeProfiles.updatedAt
+            });
+
+          const createdProfile = createdProfiles[0];
+
+          if (!createdProfile) {
+            throw new AppError("Employee profile creation failed.", 500);
+          }
+
+          await tx.insert(auditLogs).values({
+            actorId: authUser.id,
+            action: "employee.created",
+            entityType: "employee_profile",
+            entityId: createdProfile.employeeId,
+            payload: {
+              email: createdUser.email,
+              role: createdUser.role,
+              department: input.department
+            }
+          });
+
+          return {
+            employeeId: createdProfile.employeeId,
+            userId: createdUser.id,
+            email: createdUser.email,
+            role: createdUser.role,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            jobTitle: input.jobTitle,
+            department: input.department,
+            hireDate: input.hireDate,
+            phone: input.phone ?? null,
+            address: input.address ?? null,
+            bio: input.bio ?? null,
+            avatarUrl: input.avatarUrl ?? null,
+            completionScore,
+            isActive: input.isActive ?? true,
+            updatedAt: createdProfile.updatedAt
+          };
+        });
+
+        return {
+          message: "Employee created successfully.",
+          employee: mapProfileForViewer(createdEmployee, authUser)
+        };
+      },
       async update({ authUser, employeeId, updates }) {
         const row = await getProfileWithUser(employeeId);
 
@@ -469,6 +724,40 @@ async function buildDefaultServices(): Promise<AppServices> {
           .from(auditLogs)
           .where(and(eq(auditLogs.entityType, "employee_profile"), eq(auditLogs.entityId, employeeId)))
           .orderBy(desc(auditLogs.createdAt));
+      },
+      async delete({ authUser, employeeId }) {
+        if (authUser.role !== "admin") {
+          throw new AppError("Admin access is required.", 403);
+        }
+
+        const profile = await getProfileWithUser(employeeId);
+
+        if (!profile) {
+          throw new AppError("Employee profile not found.", 404);
+        }
+
+        if (profile.userId === authUser.id) {
+          throw new AppError("You cannot delete your own account.", 400);
+        }
+
+        await createAuditLog({
+          actorId: authUser.id,
+          action: "employee.deleted",
+          entityType: "employee_profile",
+          entityId: employeeId,
+          payload: {
+            userId: profile.userId,
+            email: profile.email,
+            role: profile.role
+          }
+        });
+
+        await db.delete(users).where(eq(users.id, profile.userId));
+
+        return {
+          message: "Employee deleted successfully.",
+          id: employeeId
+        };
       }
     },
     changeRequests: {
@@ -666,12 +955,36 @@ async function buildDefaultServices(): Promise<AppServices> {
 
         if (authUser.role === "admin") {
           const snapshot = await db
-            .select()
+            .select({
+              snapshotDate: kpiSnapshots.snapshotDate,
+              avgApprovalDays: kpiSnapshots.avgApprovalDays
+            })
             .from(kpiSnapshots)
             .orderBy(desc(kpiSnapshots.snapshotDate), desc(kpiSnapshots.createdAt))
             .limit(1);
+          const totalEmployeesRows = await db.select({ total: count() }).from(employeeProfiles);
+          const activeEmployeesRows = await db
+            .select({ total: count() })
+            .from(employeeProfiles)
+            .where(eq(employeeProfiles.isActive, true));
+          const pendingRows = await db
+            .select({ total: count() })
+            .from(profileChangeRequests)
+            .where(eq(profileChangeRequests.status, "pending"));
+          const completionRows = await db
+            .select({ avgCompletionScore: avg(employeeProfiles.completionScore) })
+            .from(employeeProfiles);
+          const headcountRows = await db.select().from(vHeadcountByDept);
 
-          return snapshot[0] ?? null;
+          return {
+            snapshotDate: snapshot[0]?.snapshotDate ?? new Date().toISOString().slice(0, 10),
+            totalEmployees: totalEmployeesRows[0]?.total ?? 0,
+            activeEmployees: activeEmployeesRows[0]?.total ?? 0,
+            avgCompletionScore: Number(completionRows[0]?.avgCompletionScore ?? 0),
+            pendingApprovals: pendingRows[0]?.total ?? 0,
+            avgApprovalDays: snapshot[0]?.avgApprovalDays ?? 0,
+            departmentHeadcount: Object.fromEntries(headcountRows.map((row) => [row.department, row.headcount]))
+          };
         }
 
         const departmentsForManager = await resolveManagedDepartments(authUser.id);

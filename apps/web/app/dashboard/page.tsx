@@ -8,7 +8,7 @@ import { AppShell } from "../../components/app-shell";
 import { KpiGrid } from "../../components/kpi-grid";
 import { StatusBadge } from "../../components/status-badge";
 import { authOptions } from "../../lib/auth";
-import { getDashboardActivity, getDashboardKpis } from "../../lib/api";
+import { getDashboardActivity, getDashboardKpis, getEmployee, getEmployeeHistory } from "../../lib/api";
 import { formatDateTime } from "../../lib/formatting";
 
 function formatActionLabel(action: string) {
@@ -65,7 +65,9 @@ function DashboardActionLink({
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const token = session?.user?.token;
-  const kpis = (await getDashboardKpis(token)) as {
+  const role = session?.user?.role;
+  const employeeId = session?.user?.employeeId;
+  let kpis = (await getDashboardKpis(token)) as {
     totalEmployees: number;
     activeEmployees: number;
     avgCompletionScore: number;
@@ -73,29 +75,72 @@ export default async function DashboardPage() {
     snapshotDate?: string;
     avgApprovalDays?: number;
     departmentHeadcount?: Record<string, number>;
-  };
-  const activity = (await getDashboardActivity(token)) as Array<{
+  } | null;
+  let activity = (await getDashboardActivity(token)) as Array<{
     id: number;
     action: string;
     createdAt: string;
   }>;
 
-  const departmentRows = Object.entries(kpis.departmentHeadcount ?? {})
+  if (role === "employee" && employeeId) {
+    const employee = (await getEmployee(String(employeeId), token)) as
+      | {
+          completionScore: number;
+          isActive: boolean;
+          department: string;
+        }
+      | null;
+    const history = (await getEmployeeHistory(String(employeeId), token)) as Array<{
+      id: number;
+      action: string;
+      createdAt: string;
+    }>;
+
+    kpis = {
+      totalEmployees: 1,
+      activeEmployees: employee?.isActive ? 1 : 0,
+      avgCompletionScore: employee?.completionScore ?? 0,
+      pendingApprovals: 0,
+      snapshotDate: new Date().toISOString().slice(0, 10),
+      avgApprovalDays: 0,
+      departmentHeadcount: employee?.department ? { [employee.department]: 1 } : {}
+    };
+    activity = history;
+  }
+
+  const safeKpis = kpis ?? {
+    totalEmployees: 0,
+    activeEmployees: 0,
+    avgCompletionScore: 0,
+    pendingApprovals: 0,
+    snapshotDate: new Date().toISOString().slice(0, 10),
+    avgApprovalDays: 0,
+    departmentHeadcount: {}
+  };
+
+  const departmentRows = Object.entries(safeKpis.departmentHeadcount ?? {})
     .map(([department, count]) => ({ department, count }))
     .sort((left, right) => right.count - left.count);
   const maxDepartmentCount = Math.max(...departmentRows.map((entry) => entry.count), 1);
-  const completionPercent = Math.max(0, Math.min(100, Number(kpis.avgCompletionScore ?? 0)));
+  const completionPercent = Math.max(0, Math.min(100, Number(safeKpis.avgCompletionScore ?? 0)));
   const gaugeDegrees = Math.max(12, Math.round((completionPercent / 100) * 360));
   const topActivity = activity.slice(0, 4);
-  const snapshotDate = kpis.snapshotDate ?? "Latest available snapshot";
+  const snapshotDate = safeKpis.snapshotDate ?? "Latest available snapshot";
   const leadingDepartment = departmentRows[0];
   const focusDepartment = departmentRows[1] ?? leadingDepartment;
   const insightHeadline =
-    kpis.pendingApprovals > 0 ? `${kpis.pendingApprovals} profile updates need review.` : "The review queue is clear.";
+    safeKpis.pendingApprovals > 0 ? `${safeKpis.pendingApprovals} profile updates need review.` : "The review queue is clear.";
   const insightBody =
-    kpis.pendingApprovals > 0
+    safeKpis.pendingApprovals > 0
       ? `Profile readiness is ${completionPercent}% and ${leadingDepartment?.department ?? "your top team"} carries the highest headcount.`
       : `Profile readiness is ${completionPercent}% and the platform is ready for the next round of profile updates.`;
+  const primaryActionHref = role === "employee" && employeeId ? `/employees/${employeeId}/edit` : "/approvals";
+  const primaryActionLabel = role === "employee" ? "Update my profile" : "Open review queue";
+  const secondaryActionHref = role === "employee" && employeeId ? `/employees/${employeeId}` : "/employees";
+  const secondaryActionLabel = role === "employee" ? "Open my profile" : "Browse people";
+  const activityHistoryHref = role === "employee" && employeeId ? `/employees/${employeeId}/history` : "/employees/1/history";
+  const queueActionHref = role === "employee" && employeeId ? `/employees/${employeeId}/edit` : "/approvals";
+  const queueActionLabel = role === "employee" ? "Submit an update" : "Open approval queue";
 
   return (
     <AppShell
@@ -104,11 +149,13 @@ export default async function DashboardPage() {
     >
       <KpiGrid
         kpis={{
-          totalEmployees: kpis.totalEmployees,
-          activeEmployees: kpis.activeEmployees,
-          avgCompletionScore: kpis.avgCompletionScore,
-          pendingApprovals: kpis.pendingApprovals
+          totalEmployees: safeKpis.totalEmployees,
+          activeEmployees: safeKpis.activeEmployees,
+          avgCompletionScore: safeKpis.avgCompletionScore,
+          pendingApprovals: safeKpis.pendingApprovals
         }}
+        role={role}
+        employeeId={employeeId}
       />
 
       <section className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
@@ -125,7 +172,7 @@ export default async function DashboardPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="rounded-[1.5rem] bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/65">Approval time</p>
-                <p className="mt-2 text-3xl font-black tracking-[-0.05em]">{kpis.avgApprovalDays ?? 0} days</p>
+                <p className="mt-2 text-3xl font-black tracking-[-0.05em]">{safeKpis.avgApprovalDays ?? 0} days</p>
               </div>
               <div className="rounded-[1.5rem] bg-white/10 px-4 py-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/65">Largest team</p>
@@ -135,9 +182,9 @@ export default async function DashboardPage() {
           </div>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <DashboardActionLink href="/approvals">Open review queue</DashboardActionLink>
-            <DashboardActionLink href="/employees" tone="secondary">
-              Browse people
+            <DashboardActionLink href={primaryActionHref}>{primaryActionLabel}</DashboardActionLink>
+            <DashboardActionLink href={secondaryActionHref} tone="secondary">
+              {secondaryActionLabel}
             </DashboardActionLink>
           </div>
         </Card>
@@ -247,19 +294,19 @@ export default async function DashboardPage() {
 
           <div className="mt-8 rounded-[1.75rem] bg-[#f7faf6] p-5">
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Review queue</p>
-            <p className="mt-3 text-5xl font-black tracking-[-0.08em] text-slate-950">{kpis.pendingApprovals}</p>
+            <p className="mt-3 text-5xl font-black tracking-[-0.08em] text-slate-950">{safeKpis.pendingApprovals}</p>
             <p className="mt-3 text-base leading-7 text-slate-600">
-              {kpis.pendingApprovals > 0 ? "Updates waiting on a decision." : "No requests are waiting."}
+              {safeKpis.pendingApprovals > 0 ? "Updates waiting on a decision." : "No requests are waiting."}
             </p>
             <div className="mt-5">
-              <DashboardActionLink href="/approvals">Open approval queue</DashboardActionLink>
+              <DashboardActionLink href={queueActionHref}>{queueActionLabel}</DashboardActionLink>
             </div>
           </div>
 
           <div className="mt-5 grid gap-3">
             <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Turnaround</p>
-              <p className="mt-2 text-2xl font-black tracking-[-0.05em] text-slate-950">{kpis.avgApprovalDays ?? 0} days</p>
+              <p className="mt-2 text-2xl font-black tracking-[-0.05em] text-slate-950">{safeKpis.avgApprovalDays ?? 0} days</p>
             </div>
             <div className="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Focus team</p>
@@ -282,7 +329,7 @@ export default async function DashboardPage() {
               <CardDescription className="mt-2 text-base">Latest workflow events across the platform.</CardDescription>
             </div>
             <Link
-              href="/employees/1/history"
+              href={activityHistoryHref}
               className="inline-flex min-h-11 items-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:border-slate-950 hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
             >
               History

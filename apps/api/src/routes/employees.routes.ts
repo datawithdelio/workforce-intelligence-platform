@@ -1,13 +1,14 @@
 import { Router } from "express";
 
 import {
+  adminEmployeeCreateSchema,
   employeeIdParamSchema,
   employeeUpdateSchema,
   paginationSchema
 } from "@workforce/shared";
 
 import { parseOrThrow } from "../lib/validation";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppServices } from "../services";
 import type { AuthenticatedRequest } from "../types";
 
@@ -43,6 +44,22 @@ export function buildEmployeesRouter(services: AppServices): Router {
     }
   });
 
+  router.post("/", requireAuth, requireRole("admin"), async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const input = parseOrThrow(adminEmployeeCreateSchema, req.body);
+      const response = await services.employees.create({
+        authUser: req.authUser!,
+        input: {
+          ...input,
+          role: input.role || "employee"
+        }
+      });
+      res.status(201).json(response);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.put("/:id", requireAuth, async (req: AuthenticatedRequest, res, next) => {
     try {
       const { id } = parseOrThrow(employeeIdParamSchema, req.params);
@@ -62,6 +79,19 @@ export function buildEmployeesRouter(services: AppServices): Router {
     try {
       const { id } = parseOrThrow(employeeIdParamSchema, req.params);
       const response = await services.employees.history({
+        authUser: req.authUser!,
+        employeeId: id
+      });
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.delete("/:id", requireAuth, requireRole("admin"), async (req: AuthenticatedRequest, res, next) => {
+    try {
+      const { id } = parseOrThrow(employeeIdParamSchema, req.params);
+      const response = await services.employees.delete({
         authUser: req.authUser!,
         employeeId: id
       });

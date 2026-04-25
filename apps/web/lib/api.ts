@@ -3,70 +3,124 @@ import { demoActivity, demoChangeRequests, demoDashboard, demoEmployees, demoNot
 const apiBaseUrl =
   process.env.API_INTERNAL_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
+function getApiBaseCandidates() {
+  const candidates = [apiBaseUrl];
+
+  if (apiBaseUrl.includes("localhost")) {
+    candidates.push(apiBaseUrl.replace("localhost", "127.0.0.1"));
+  }
+
+  return [...new Set(candidates)];
+}
+
 async function fetchApi<T>(path: string, token?: string): Promise<T | null> {
   if (!token) {
     return null;
   }
 
-  try {
-    const response = await fetch(`${apiBaseUrl}${path}`, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      },
-      cache: "no-store"
-    });
+  for (const baseUrl of getApiBaseCandidates()) {
+    try {
+      const response = await fetch(`${baseUrl}${path}`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        },
+        cache: "no-store"
+      });
 
-    if (!response.ok) {
-      return null;
+      if (!response.ok) {
+        continue;
+      }
+
+      return (await response.json()) as T;
+    } catch (_error) {
+      continue;
     }
-
-    return (await response.json()) as T;
-  } catch (_error) {
-    return null;
   }
+
+  return null;
 }
 
 export async function getDashboardKpis(token?: string) {
-  return (await fetchApi("/dashboard/kpis", token)) ?? demoDashboard;
+  if (!token) {
+    return demoDashboard;
+  }
+
+  return (await fetchApi("/dashboard/kpis", token)) ?? null;
 }
 
 export async function getDashboardActivity(token?: string) {
-  return (await fetchApi("/dashboard/activity", token)) ?? demoActivity;
+  if (!token) {
+    return demoActivity;
+  }
+
+  return (await fetchApi("/dashboard/activity", token)) ?? [];
 }
 
 export async function getEmployees(token?: string) {
   const response = await fetchApi<{ items: typeof demoEmployees }>("/employees", token);
-  return response?.items ?? demoEmployees;
+  return token ? response?.items ?? [] : response?.items ?? demoEmployees;
 }
 
 export async function getEmployee(id: string, token?: string) {
-  return (await fetchApi(`/employees/${id}`, token)) ?? demoEmployees.find((employee) => employee.id === Number(id)) ?? demoEmployees[0];
+  if (!token) {
+    return (await fetchApi(`/employees/${id}`, token)) ?? demoEmployees.find((employee) => employee.id === Number(id)) ?? demoEmployees[0];
+  }
+
+  return (await fetchApi(`/employees/${id}`, token)) ?? null;
 }
 
 export async function getEmployeeHistory(id: string, token?: string) {
-  return (await fetchApi(`/employees/${id}/history`, token)) ?? demoActivity.filter((entry) => entry.entityId === Number(id));
+  if (!token) {
+    return (await fetchApi(`/employees/${id}/history`, token)) ?? demoActivity.filter((entry) => entry.entityId === Number(id));
+  }
+
+  return (await fetchApi(`/employees/${id}/history`, token)) ?? [];
 }
 
 export async function getChangeRequests(token?: string) {
-  return (await fetchApi("/change-requests", token)) ?? demoChangeRequests;
+  if (!token) {
+    return demoChangeRequests;
+  }
+
+  return (await fetchApi("/change-requests", token)) ?? [];
 }
 
 export async function getChangeRequest(id: string, token?: string) {
-  return (await fetchApi(`/change-requests/${id}`, token)) ?? demoChangeRequests.find((request) => request.id === Number(id)) ?? demoChangeRequests[0];
+  if (!token) {
+    return (await fetchApi(`/change-requests/${id}`, token)) ?? demoChangeRequests.find((request) => request.id === Number(id)) ?? demoChangeRequests[0];
+  }
+
+  return (await fetchApi(`/change-requests/${id}`, token)) ?? null;
 }
 
 export async function getNotifications(token?: string) {
-  return (await fetchApi("/notifications", token)) ?? demoNotifications;
+  if (!token) {
+    return demoNotifications;
+  }
+
+  return (await fetchApi("/notifications", token)) ?? [];
 }
 
 export async function getAdminUsers(token?: string) {
-  return (await fetchApi("/admin/users", token)) ?? demoUsers;
+  if (!token) {
+    return demoUsers;
+  }
+
+  return (await fetchApi("/admin/users", token)) ?? [];
 }
 
 export async function getScoreSummary(token?: string) {
-  return (await fetchApi("/scores/summary", token)) ?? demoScoreSummary;
+  if (!token) {
+    return demoScoreSummary;
+  }
+
+  return (await fetchApi("/scores/summary", token)) ?? null;
 }
 
 export async function getScoreForEmployee(id: string, token?: string) {
-  return (await fetchApi(`/scores/${id}`, token)) ?? demoScores;
+  if (!token) {
+    return demoScores;
+  }
+
+  return (await fetchApi(`/scores/${id}`, token)) ?? null;
 }

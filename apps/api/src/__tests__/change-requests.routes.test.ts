@@ -7,14 +7,17 @@ import { bearerTokenFor } from "./helpers";
 const services: AppServices = {
   auth: {
     login: vi.fn(),
+    register: vi.fn(),
     logout: vi.fn(),
     me: vi.fn()
   },
   employees: {
     list: vi.fn(),
+    create: vi.fn(),
     getById: vi.fn(),
     update: vi.fn(),
-    history: vi.fn()
+    history: vi.fn(),
+    delete: vi.fn()
   },
   changeRequests: {
     list: vi.fn().mockResolvedValue([]),

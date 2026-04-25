@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 
 import { Card, CardDescription, CardTitle } from "@workforce/ui";
 
@@ -18,6 +19,11 @@ type AdminUserRow = {
 
 export default async function AdminUsersPage() {
   const session = await getServerSession(authOptions);
+
+  if (session?.user?.role !== "admin") {
+    redirect("/dashboard");
+  }
+
   const users = (await getAdminUsers(session?.user?.token)) as AdminUserRow[];
   const roleCounts = users.reduce<Record<string, number>>((accumulator, user) => {
     accumulator[user.role] = (accumulator[user.role] ?? 0) + 1;

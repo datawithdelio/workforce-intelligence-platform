@@ -1,8 +1,11 @@
 import React from "react";
+import Link from "next/link";
 import { cn } from "@workforce/ui";
 
 export function KpiGrid({
-  kpis
+  kpis,
+  role,
+  employeeId
 }: {
   kpis: {
     totalEmployees: number;
@@ -10,6 +13,8 @@ export function KpiGrid({
     avgCompletionScore: number;
     pendingApprovals: number;
   };
+  role?: "employee" | "manager" | "admin";
+  employeeId?: number | null;
 }) {
   const items = [
     {
@@ -17,28 +22,32 @@ export function KpiGrid({
       value: kpis.totalEmployees,
       note: "People currently tracked in the workforce system",
       helper: "Live workforce",
-      tone: "accent"
+      tone: "accent",
+      href: role === "employee" && employeeId ? `/employees/${employeeId}` : "/employees"
     },
     {
       label: "Active employees",
       value: kpis.activeEmployees,
       note: "Employees marked active right now",
       helper: "Operational headcount",
-      tone: "neutral"
+      tone: "neutral",
+      href: role === "employee" && employeeId ? `/employees/${employeeId}` : "/employees"
     },
     {
       label: "Average profile completion",
       value: `${kpis.avgCompletionScore}%`,
       note: "How complete employee profiles are on average",
       helper: "Readiness signal",
-      tone: "neutral"
+      tone: "neutral",
+      href: role === "employee" && employeeId ? `/employees/${employeeId}/history` : "/dashboard"
     },
     {
       label: "Waiting for manager review",
       value: kpis.pendingApprovals,
       note: "Submitted profile updates that still need a decision",
       helper: "Review queue",
-      tone: "neutral"
+      tone: "neutral",
+      href: role === "employee" && employeeId ? `/employees/${employeeId}/edit` : "/approvals"
     }
   ] as const;
 
@@ -61,16 +70,18 @@ export function KpiGrid({
               </p>
               <p className="mt-5 text-5xl font-black tracking-[-0.08em]">{item.value}</p>
             </div>
-            <div
+            <Link
+              href={item.href}
+              aria-label={`Open ${item.label}`}
               className={cn(
-                "flex h-12 w-12 items-center justify-center rounded-full border text-lg font-bold",
+                "flex h-12 w-12 items-center justify-center rounded-full border text-lg font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900",
                 item.tone === "accent"
-                  ? "border-white/20 bg-white/10 text-white"
-                  : "border-slate-200 bg-[#f7f9f6] text-slate-800"
+                  ? "border-white/20 bg-white/10 text-white hover:bg-white/20"
+                  : "border-slate-200 bg-[#f7f9f6] text-slate-800 hover:border-slate-950 hover:text-slate-950"
               )}
             >
               ↗
-            </div>
+            </Link>
           </div>
           <p className={cn("mt-4 text-sm leading-6", item.tone === "accent" ? "text-white/80" : "text-slate-500")}>
             {item.note}

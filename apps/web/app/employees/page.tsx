@@ -1,10 +1,12 @@
 import { getServerSession } from "next-auth";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { Card, CardDescription, CardTitle, cn } from "@workforce/ui";
 
 import { AppIcon } from "../../components/app-icon";
 import { AppShell } from "../../components/app-shell";
+import { AdminEmployeeCreateForm, EmployeeRowActions } from "../../components/admin-employee-actions";
 import { StatusBadge } from "../../components/status-badge";
 import { authOptions } from "../../lib/auth";
 import { getEmployees } from "../../lib/api";
@@ -12,6 +14,7 @@ import { formatPercent, formatShortDate } from "../../lib/formatting";
 
 type EmployeeRow = {
   id: number;
+  userId: number;
   email: string;
   role: string;
   firstName: string;
@@ -29,7 +32,17 @@ function getInitials(firstName: string, lastName: string) {
 
 export default async function EmployeesPage() {
   const session = await getServerSession(authOptions);
+
+  if (session?.user?.role === "employee") {
+    if (session.user.employeeId) {
+      redirect(`/employees/${session.user.employeeId}`);
+    }
+
+    redirect("/dashboard");
+  }
+
   const employees = (await getEmployees(session?.user?.token)) as EmployeeRow[];
+  const canManageEmployees = session?.user?.role === "admin";
   const departments = Array.from(new Set(employees.map((employee) => employee.department)));
   const employeesNeedingSupport = employees.filter((employee) => employee.completionScore < 80);
   const managers = employees.filter((employee) => employee.role === "manager");
@@ -166,18 +179,16 @@ export default async function EmployeesPage() {
                     </div>
                   </div>
 
-                  <div>
-                    <Link
-                      className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:border-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
-                      href={`/employees/${employee.id}`}
-                    >
-                      Open profile
-                    </Link>
-                  </div>
+                  <EmployeeRowActions
+                    employee={employee}
+                    token={session?.user?.token}
+                    canDelete={canManageEmployees && employee.userId !== session?.user?.id}
+                  />
                 </div>
               ))}
             </div>
           </div>
+          {canManageEmployees ? <AdminEmployeeCreateForm token={session?.user?.token} /> : null}
         </Card>
 
         <div className="space-y-4">

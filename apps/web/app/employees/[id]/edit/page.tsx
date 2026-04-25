@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import { notFound, redirect } from "next/navigation";
 
 import { AppShell } from "../../../../components/app-shell";
 import { ProfileEditForm } from "../../../../components/profile-edit-form";
@@ -7,7 +8,14 @@ import { getEmployee } from "../../../../lib/api";
 
 export default async function EmployeeEditPage({ params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  const employee = (await getEmployee(params.id, session?.user?.token)) as Record<string, unknown>;
+  if (session?.user?.role !== "employee" || session.user.employeeId !== Number(params.id)) {
+    redirect(`/employees/${params.id}`);
+  }
+  const employee = (await getEmployee(params.id, session?.user?.token)) as Record<string, unknown> | null;
+
+  if (!employee) {
+    notFound();
+  }
 
   return (
     <AppShell
